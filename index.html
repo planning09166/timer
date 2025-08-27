@@ -93,7 +93,7 @@
     <div class="panel" role="group" aria-label="1-minute timer">
       <div class="time" id="time" aria-live="assertive">01:00</div>
       <div class="label" id="status">Press SPACE to start 1:00</div>
-      <div class="hint">Space = start; when it hits 00:00, Space stops the buzzer & resets. Enter = reset anytime.</div>
+      <div class="hint">SPACE = start (idle) · reset (while counting) · stop buzzer (at 00:00)</div>
       <div class="btns">
         <button id="startBtn" title="Start (Space)">Start</button>
         <button id="stopBtn" title="Stop buzzer (Space when buzzing)">Stop Buzzer</button>
@@ -238,22 +238,18 @@
     stopBtn.addEventListener('click', stopBuzzAndReset);
     resetBtn.addEventListener('click', reset);
 
-    // Keyboard: SPACE to start, SPACE (when buzzing) to stop buzzer, SPACE to reset anytime
+    // Keyboard: SPACE does everything — start (idle), reset (counting), stop buzzer (buzzing)
     window.addEventListener('keydown', (e)=>{
-      if(e.code === 'Space'){
-        if(e.repeat) return; // ignore key repeat
-        e.preventDefault();
-        if(state === 'idle'){
-          startCountdown();
-        } else if(state === 'buzzing'){
-          stopBuzzAndReset();
-        }
+      if(e.code !== 'Space') return;
+      if(e.repeat) return;
+      e.preventDefault();
+      if(state === 'idle'){
+        startCountdown();
+      } else if(state === 'counting'){
+        reset();
+      } else if(state === 'buzzing'){
+        stopBuzzAndReset();
       }
-      if(e.code === 'Space'){
-  e.preventDefault();
-  reset();
-}
-
     }, {passive:false});
 
     // Initialize
