@@ -1,0 +1,258 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Overdramatic 1‑Minute Timer — Space to Start/Stop</title>
+  <style>
+    :root{
+      --bg1:#b6f57a;   /* green-yellowish palette */
+      --bg2:#e7ff9e;
+      --bg3:#ccff66;
+      --text:#0b1e07;
+      --accent:#ff1a1a; /* red alert */
+    }
+
+    /* Green-yellow "cloud" background using layered radial-gradients */
+    body{
+      margin:0; height:100vh; overflow:hidden; color:var(--text);
+      font-family: system-ui, -apple-system, Segoe UI, Roboto, Ubuntu, Cantarell, Noto Sans, Arial, "Apple Color Emoji", "Segoe UI Emoji";
+      background:
+        radial-gradient(1200px 600px at 20% -10%, rgba(255,255,255,0.6), transparent 60%),
+        radial-gradient(900px 500px at 90% 10%, rgba(255,255,255,0.5), transparent 60%),
+        radial-gradient(700px 400px at 30% 80%, rgba(255,255,255,0.35), transparent 60%),
+        radial-gradient(800px 500px at 80% 70%, rgba(255,255,255,0.4), transparent 60%),
+        radial-gradient(1000px 600px at 50% 50%, var(--bg2), transparent 70%),
+        radial-gradient(1400px 800px at 50% 30%, var(--bg3), transparent 70%),
+        linear-gradient(180deg, var(--bg1), var(--bg2));
+      position:relative;
+    }
+
+    .container{
+      display:grid; place-items:center; height:100%;
+    }
+
+    .panel{
+      backdrop-filter: blur(6px);
+      background: rgba(255,255,255,0.35);
+      border: 2px solid rgba(255,255,255,0.6);
+      border-radius: 24px;
+      padding: 32px 40px; text-align:center;
+      box-shadow: 0 10px 30px rgba(0,0,0,0.12);
+    }
+
+    .time{
+      font-variant-numeric: tabular-nums; letter-spacing: 2px;
+      font-size: clamp(56px, 12vw, 128px);
+      line-height: 1; font-weight: 800;
+      text-shadow: 0 2px 0 rgba(255,255,255,0.6);
+    }
+
+    .label{ margin-top: 10px; font-size: clamp(14px, 2.8vw, 18px); opacity:0.8; }
+
+    .hint{ margin-top: 14px; font-size: 14px; opacity:0.75; }
+
+    .btns{ margin-top: 20px; display:flex; gap:10px; justify-content:center; flex-wrap:wrap; }
+    button{
+      border:0; border-radius: 999px; padding: 10px 16px; font-weight:700; cursor:pointer;
+      background: rgba(255,255,255,0.8); box-shadow: 0 6px 16px rgba(0,0,0,0.12);
+    }
+
+    /* RED FLICKER OVERLAY when buzzing */
+    .overlay{
+      position:fixed; inset:0; pointer-events:none; mix-blend-mode:multiply;
+      background: radial-gradient(60% 60% at 50% 50%, rgba(255,0,0,0.75), rgba(255,0,0,0.2) 60%, rgba(255,0,0,0) 85%);
+      opacity:0; transition: opacity .2s ease;
+    }
+    body.buzzing .overlay{ opacity:1; animation: alarm-flash .25s infinite alternate; }
+
+    @keyframes alarm-flash{ from{ filter:brightness(1); } to{ filter:brightness(1.8); } }
+
+    /* Shake the timer text subtly during alarm */
+    body.buzzing .time{ animation: quake .12s infinite linear; }
+    @keyframes quake{
+      0%{ transform: translate(0,0); }
+      25%{ transform: translate(1px,-1px) rotate(-0.2deg); }
+      50%{ transform: translate(-1px,1px) rotate(0.2deg); }
+      75%{ transform: translate(1px,1px) rotate(0deg); }
+      100%{ transform: translate(0,0); }
+    }
+
+    /* Big "TIME!" badge when alarm is active */
+    .badge{
+      position:absolute; top:18px; right:18px; font-weight:900; letter-spacing:1px;
+      background: var(--accent); color:white; border-radius: 999px; padding: 8px 14px; box-shadow: 0 8px 18px rgba(255,0,0,0.35);
+      transform: scale(0); transform-origin: top right; transition: transform .15s ease;
+    }
+    body.buzzing .badge{ transform: scale(1); }
+  </style>
+</head>
+<body>
+  <div class="overlay" aria-hidden="true"></div>
+  <div class="container">
+    <div class="panel" role="group" aria-label="1-minute timer">
+      <div class="time" id="time" aria-live="assertive">01:00</div>
+      <div class="label" id="status">Press SPACE to start 1:00</div>
+      <div class="hint">Space = start; when it hits 00:00, Space stops the buzzer & resets.</div>
+      <div class="btns">
+        <button id="startBtn" title="Start (Space)">Start</button>
+        <button id="stopBtn" title="Stop buzzer (Space when buzzing)">Stop Buzzer</button>
+        <button id="resetBtn" title="Reset to 01:00">Reset</button>
+      </div>
+      <div class="badge" aria-hidden="true">TIME!</div>
+    </div>
+  </div>
+
+  <script>
+    const timeEl = document.getElementById('time');
+    const statusEl = document.getElementById('status');
+    const startBtn = document.getElementById('startBtn');
+    const stopBtn = document.getElementById('stopBtn');
+    const resetBtn = document.getElementById('resetBtn');
+
+    let state = 'idle'; // 'idle' | 'counting' | 'buzzing'
+    let remaining = 60; // seconds
+    let intervalId = null;
+
+    // Web Audio for a LOUD, CONTINUOUS, IRRITATING beep
+    let audioCtx = null;
+    let osc = null; // primary oscillator
+    let gain = null;
+    let tremOsc = null; // tremolo oscillator for extra annoyance
+
+    function fmt(sec){
+      const m = Math.floor(sec / 60).toString().padStart(2,'0');
+      const s = Math.floor(sec % 60).toString().padStart(2,'0');
+      return `${m}:${s}`;
+    }
+
+    function render(){
+      timeEl.textContent = fmt(remaining);
+    }
+
+    function reset(){
+      clearInterval(intervalId); intervalId = null;
+      state = 'idle'; remaining = 60; render();
+      statusEl.textContent = 'Press SPACE to start 1:00';
+      document.body.classList.remove('buzzing');
+      stopBeep();
+    }
+
+    function startCountdown(){
+      if(state !== 'idle') return;
+      state = 'counting';
+      statusEl.textContent = 'Counting down…';
+      const t0 = Date.now();
+      let last = t0;
+      intervalId = setInterval(()=>{
+        const now = Date.now();
+        const elapsed = Math.floor((now - t0) / 1000);
+        remaining = Math.max(60 - elapsed, 0);
+        if (now - last >= 200) { // update render throttled
+          render();
+          last = now;
+        }
+        if(remaining <= 0){
+          clearInterval(intervalId); intervalId = null;
+          goBuzz();
+        }
+      }, 50);
+      render();
+    }
+
+    function ensureAudio(){
+      if(!audioCtx){
+        audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+      }
+      if(audioCtx.state === 'suspended'){
+        audioCtx.resume();
+      }
+      if(!gain){
+        gain = audioCtx.createGain();
+        gain.gain.value = 0.0;
+        gain.connect(audioCtx.destination);
+      }
+    }
+
+    function startBeep(){
+      ensureAudio();
+      // Primary square wave ~1100 Hz (piercing)
+      osc = audioCtx.createOscillator();
+      osc.type = 'square';
+      osc.frequency.setValueAtTime(1100, audioCtx.currentTime);
+
+      // Tremolo for extra irritation (on/off 12 Hz)
+      tremOsc = audioCtx.createOscillator();
+      tremOsc.type = 'square';
+      tremOsc.frequency.setValueAtTime(12, audioCtx.currentTime);
+      const tremGain = audioCtx.createGain();
+      tremGain.gain.value = 0.5; // depth
+
+      const modGain = audioCtx.createGain();
+      modGain.gain.value = 0.5;
+
+      tremOsc.connect(tremGain).connect(modGain.gain);
+
+      osc.connect(modGain).connect(gain);
+
+      // Fade-in quickly to avoid click
+      const now = audioCtx.currentTime;
+      gain.gain.cancelScheduledValues(now);
+      gain.gain.setValueAtTime(0.0001, now);
+      gain.gain.exponentialRampToValueAtTime(0.9, now + 0.08);
+
+      osc.start();
+      tremOsc.start();
+    }
+
+    function stopBeep(){
+      if(!audioCtx || !gain) return;
+      const now = audioCtx.currentTime;
+      try{
+        gain.gain.cancelScheduledValues(now);
+        gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.06);
+      }catch(e){}
+      setTimeout(()=>{
+        if(osc){ try{ osc.stop(); }catch(e){} osc.disconnect(); osc = null; }
+        if(tremOsc){ try{ tremOsc.stop(); }catch(e){} tremOsc.disconnect(); tremOsc = null; }
+      }, 80);
+    }
+
+    function goBuzz(){
+      state = 'buzzing';
+      document.body.classList.add('buzzing');
+      statusEl.textContent = '00:00 — ALARM! Press SPACE to stop & reset';
+      timeEl.textContent = '00:00';
+      startBeep();
+    }
+
+    function stopBuzzAndReset(){
+      if(state !== 'buzzing') return;
+      document.body.classList.remove('buzzing');
+      stopBeep();
+      reset();
+    }
+
+    // Controls
+    startBtn.addEventListener('click', startCountdown);
+    stopBtn.addEventListener('click', stopBuzzAndReset);
+    resetBtn.addEventListener('click', reset);
+
+    // Keyboard: SPACE to start, and SPACE (when buzzing) to stop buzzer
+    window.addEventListener('keydown', (e)=>{
+      if(e.code === 'Space'){
+        if(e.repeat) return; // ignore key repeat
+        e.preventDefault();
+        if(state === 'idle'){
+          startCountdown();
+        } else if(state === 'buzzing'){
+          stopBuzzAndReset();
+        }
+      }
+    }, {passive:false});
+
+    // Initialize
+    render();
+  </script>
+</body>
+</html>
