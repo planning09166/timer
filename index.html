@@ -93,7 +93,7 @@
     <div class="panel" role="group" aria-label="1-minute timer">
       <div class="time" id="time" aria-live="assertive">01:00</div>
       <div class="label" id="status">Press SPACE to start 1:00</div>
-      <div class="hint">Space = start; when it hits 00:00, Space stops the buzzer & resets.</div>
+      <div class="hint">Space = start; when it hits 00:00, Space stops the buzzer & resets. Enter = reset anytime.</div>
       <div class="btns">
         <button id="startBtn" title="Start (Space)">Start</button>
         <button id="stopBtn" title="Stop buzzer (Space when buzzing)">Stop Buzzer</button>
@@ -238,7 +238,7 @@
     stopBtn.addEventListener('click', stopBuzzAndReset);
     resetBtn.addEventListener('click', reset);
 
-    // Keyboard: SPACE to start, and SPACE (when buzzing) to stop buzzer
+    // Keyboard: SPACE to start, SPACE (when buzzing) to stop buzzer, ENTER to reset anytime
     window.addEventListener('keydown', (e)=>{
       if(e.code === 'Space'){
         if(e.repeat) return; // ignore key repeat
@@ -248,6 +248,10 @@
         } else if(state === 'buzzing'){
           stopBuzzAndReset();
         }
+      }
+      if(e.code === 'Enter'){
+        e.preventDefault();
+        reset();
       }
     }, {passive:false});
 
