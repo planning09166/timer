@@ -238,7 +238,7 @@
     stopBtn.addEventListener('click', stopBuzzAndReset);
     resetBtn.addEventListener('click', reset);
 
-    // Keyboard: SPACE to start, SPACE (when buzzing) to stop buzzer, ENTER to reset anytime
+    // Keyboard: SPACE to start, SPACE (when buzzing) to stop buzzer, SPACE to reset anytime
     window.addEventListener('keydown', (e)=>{
       if(e.code === 'Space'){
         if(e.repeat) return; // ignore key repeat
@@ -249,10 +249,11 @@
           stopBuzzAndReset();
         }
       }
-      if(e.code === 'Enter'){
-        e.preventDefault();
-        reset();
-      }
+      if(e.code === 'Space'){
+  e.preventDefault();
+  reset();
+}
+
     }, {passive:false});
 
     // Initialize
